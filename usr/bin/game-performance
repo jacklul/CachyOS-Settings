@@ -1,6 +1,46 @@
 #!/bin/bash
 # Helper script to enable the performance gov with proton or others
 
+function can_use_gamemode() {
+    local renice renice_new ioprio ioprio_new softrealtime softrealtime_new desiredgov desiredgov_new
+    local config configs=(
+        "/usr/share/gamemode/gamemode.ini"
+        "/etc/gamemode.ini"
+        "$HOME/.config/gamemode.ini"
+        "$PWD/gamemode.ini"
+    )
+
+    desiredgov=performance
+
+    for config in "${configs[@]}"; do
+        [ ! -f "$config" ] && continue
+
+        desiredgov_new=$(grep '^\s*desiredgov=' "$config" | cut -d '=' -f 2)
+        renice_new=$(grep '^\s*renice=' "$config" | cut -d '=' -f 2)
+        ioprio_new=$(grep '^\s*ioprio=' "$config" | cut -d '=' -f 2)
+        softrealtime_new=$(grep '^\s*softrealtime=' "$config" | cut -d '=' -f 2)
+
+        [ -n "$desiredgov_new" ] && desiredgov=$desiredgov_new
+        [ -n "$renice_new" ] && renice=$renice_new
+        [ -n "$ioprio_new" ] && ioprio=$ioprio_new
+        [ -n "$softrealtime_new" ] && softrealtime=$softrealtime_new
+    done
+
+    [ "$desiredgov" != "performance" ] && return 1
+    systemctl is-active --quiet ananicy-cpp.service || return 0
+
+    if [ "$renice" != "0" ] || [ "$ioprio" != "off" ] || [ "$softrealtime" != "off" ]; then
+        return 1
+    fi
+
+    return 0
+}
+
+# Launch using GameMode when possible
+if command -v gamemoderun >/dev/null 2>&1 && can_use_gamemode; then
+    exec gamemoderun "$@"
+fi
+
 # Don't fail if the cpu driver doesn't support performance power profile
 if ! powerprofilesctl list | grep -q 'performance:'; then
     exec "$@"
